@@ -1,0 +1,4 @@
+rootProject.name = 'KActor'
+include 'KActorTest'
+include 'KActorAnnotationProcessor'
+

@@ -1,0 +1,22 @@
+buildscript {
+    ext.kotlin_version = '1.1.51'
+
+    repositories {
+        jcenter()
+        maven { url 'https://jitpack.io' }
+    }
+
+    dependencies {
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+    }
+}
+
+allprojects {
+    group 'de.musoft'
+    version '1.0-SNAPSHOT'
+
+    repositories {
+        jcenter()
+        maven { url 'https://jitpack.io' }
+    }
+}

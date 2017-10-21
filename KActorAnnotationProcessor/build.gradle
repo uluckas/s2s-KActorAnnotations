@@ -1,0 +1,15 @@
+apply plugin: 'kotlin'
+
+compileKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+
+compileTestKotlin {
+    kotlinOptions.jvmTarget = "1.8"
+}
+
+dependencies {
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version"
+    compile 'com.squareup:kotlinpoet:0.5.0'
+    //compile "com.github.yanex:takenoko:0.1"
+}

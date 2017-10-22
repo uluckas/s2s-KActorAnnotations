@@ -7,13 +7,17 @@ import javax.lang.model.SourceVersion
 import javax.lang.model.element.*
 import javax.tools.Diagnostic.Kind.ERROR
 
-private const val ACTOR_CLASS_POSTFIX = "Actor"
-private const val MESSAGE_CLASS_POSTFIX = "Msg"
+private const val ACTOR_CLASS_SUFFIX = "Actor"
+private const val MESSAGE_CLASS_SUFFIX = "Msg"
 private const val CONTEXT_PROP_NAME = "context"
+private const val DELEGATE_PROP_NAME = "delegate"
+private const val ACTOR_PROP_NAME = "actor"
 private const val RESPONES_PROP_NAME = "response"
+private const val FIREANDFORGET_METHOD_SUFFIX = "AndForget"
+private const val ASYNC_METHOD_SUFFIX = "Async"
 
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
-@SupportedAnnotationTypes("de.musoft.annotationProcessor.KActorAnnotation")
+@SupportedAnnotationTypes("de.musoft.annotationProcessor.KActor")
 @SupportedOptions(KActorAnnotationProcessor.KAPT_KOTLIN_GENERATED_OPTION_NAME)
 class KActorAnnotationProcessor : AbstractProcessor() {
     companion object {
@@ -21,7 +25,7 @@ class KActorAnnotationProcessor : AbstractProcessor() {
     }
 
     override fun process(annotations: MutableSet<out TypeElement>?, roundEnv: RoundEnvironment): Boolean {
-        val annotatedElements = roundEnv.getElementsAnnotatedWith(KActorAnnotation::class.java)
+        val annotatedElements = roundEnv.getElementsAnnotatedWith(KActor::class.java)
         if (annotatedElements.isEmpty()) return false
 
         val kaptKotlinGeneratedDir = processingEnv.options[KAPT_KOTLIN_GENERATED_OPTION_NAME] ?: run {
@@ -29,26 +33,25 @@ class KActorAnnotationProcessor : AbstractProcessor() {
             return false
         }
 
-        for (element: Element in annotatedElements) {
-            val typeElement = element as? TypeElement ?: continue
-            val packageElement = typeElement.enclosingElement as? PackageElement ?: continue
-            val packageName = packageElement.toString()
-            val actorClassName = ClassName(packageName, typeElement.simpleName.toString() + ACTOR_CLASS_POSTFIX)
+        for (annotatedElement: Element in annotatedElements) {
+            val annotatedTypeElement = annotatedElement as? TypeElement ?: continue
+            val annotatedClassName = annotatedTypeElement.asClassName()
+            val packageName = annotatedClassName.packageName()
+            val actorClassName = ClassName(packageName, annotatedClassName.simpleName() + ACTOR_CLASS_SUFFIX)
 
-            val fileSpec = FileSpec.get(packageName, actorClassSpec(typeElement, actorClassName))
+            val fileSpec = FileSpec.builder(packageName, actorClassName.simpleName())
+                    .addStaticImport("kotlinx.coroutines.experimental.channels", "actor")
+                    .addType(actorClassSpec(annotatedTypeElement, actorClassName))
+                    .build()
             fileSpec.writeTo(File(kaptKotlinGeneratedDir).toPath())
         }
 
         return true
     }
 
-    private fun messageBaseClassSpec(typeElement: TypeElement, messageBaseClassName: ClassName): TypeSpec {
+    private fun messageBaseClassSpec(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName): TypeSpec {
 
-        val visibleMethodElements = typeElement.enclosedElements
-                .filter { it.kind == ElementKind.METHOD }
-                .filter { !it.modifiers.contains(Modifier.PRIVATE) }
         val actorMessageSpecs = messageTypeSpecs(visibleMethodElements, messageBaseClassName)
-
 
         return TypeSpec.classBuilder(messageBaseClassName)
                 .addModifiers(KModifier.SEALED, KModifier.PRIVATE)
@@ -56,8 +59,13 @@ class KActorAnnotationProcessor : AbstractProcessor() {
                 .build()
     }
 
-    private fun actorClassSpec(typeElement: TypeElement, actorClassName: ClassName): TypeSpec {
+    private fun actorClassSpec(annotatedTypeElement: TypeElement, actorClassName: ClassName): TypeSpec {
         val contextTypeClassName = ClassName("kotlinx.coroutines.experimental", "CoroutineDispatcher")
+        val visibleMethodElements = annotatedTypeElement.enclosedElements
+                .filterNot { it.modifiers.contains(Modifier.PRIVATE) }
+                .filterNot { it.modifiers.contains(Modifier.PROTECTED) }
+                .mapNotNull { it as? ExecutableElement }
+                .filter { it.kind == ElementKind.METHOD }
         val contextParameterSpec = ParameterSpec
                 .builder(CONTEXT_PROP_NAME, contextTypeClassName)
                 .defaultValue("kotlinx.coroutines.experimental.DefaultDispatcher")
@@ -65,50 +73,179 @@ class KActorAnnotationProcessor : AbstractProcessor() {
         val constructorSpec = FunSpec.constructorBuilder()
                 .addParameter(contextParameterSpec)
                 .build()
-        val contextPropertySpec = PropertySpec
-                .builder(CONTEXT_PROP_NAME, contextTypeClassName)
-                .addModifiers(KModifier.PRIVATE)
-                .initializer(CONTEXT_PROP_NAME)
+        val delegatePropertySpec = PropertySpec
+                .builder(DELEGATE_PROP_NAME, annotatedTypeElement.asClassName(), KModifier.PRIVATE)
+                .initializer("${annotatedTypeElement.simpleName}()")
                 .build()
-        val messageBaseClassName = actorClassName.nestedClass(typeElement.simpleName.toString() + MESSAGE_CLASS_POSTFIX)
-        val messageBaseClassSpec = messageBaseClassSpec(typeElement, messageBaseClassName)
+        val messageBaseClassName = actorClassName.nestedClass(annotatedTypeElement.simpleName.toString() + MESSAGE_CLASS_SUFFIX)
+        val messageBaseClassSpec = messageBaseClassSpec(visibleMethodElements, messageBaseClassName)
+        val actorPropertySpec = actorPropertySpec(visibleMethodElements, messageBaseClassName)
+
+        val delegateMethodSpecs = delegteMethodSpecs(visibleMethodElements, messageBaseClassName)
 
         return TypeSpec.classBuilder(actorClassName)
                 .primaryConstructor(constructorSpec)
-                .addProperty(contextPropertySpec)
                 .addType(messageBaseClassSpec)
+                .addProperty(delegatePropertySpec)
+                .addProperty(actorPropertySpec)
+                .addFunctions(delegateMethodSpecs)
                 .build()
     }
 
-    private fun messageTypeSpecs(methodElements: List<Element>, baseClassName: ClassName): List<TypeSpec> {
-        return methodElements.map { method ->
-            method as ExecutableElement
-            val methodName = method.simpleName.toString()
-            val methodParameters = method.parameters
-            val responseClassName = ParameterizedTypeName.get(
-                    ClassName("kotlinx.coroutines.experimental", "CompletableDeferred"),
-                    method.returnType.asTypeName()).asNullable()
-            val constructorResponseParameterSpec = ParameterSpec
-                    .builder(RESPONES_PROP_NAME, responseClassName)
-                    .build()
-            val constructorParametersFromMethodSpec = methodParameters.toParameterSpecList()
-            val constructorSpec = FunSpec.constructorBuilder()
-                    .addParameter(constructorResponseParameterSpec)
-                    .addParameters(constructorParametersFromMethodSpec)
-                    .build()
-            val responsePropertySpec = PropertySpec
-                    .builder(RESPONES_PROP_NAME, responseClassName)
-                    .initializer(RESPONES_PROP_NAME)
-                    .build()
-            val propertiesSpec = methodParameters.toPropertySpecList()
+    private fun actorPropertySpec(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName): PropertySpec {
+        val actorInitializerFragments = mutableListOf(
+                """ |actor(context) {
+                    |  for (msg in channel) {
+                    |    when (msg) {
+                    |""".trimMargin()
+        )
 
-            TypeSpec.classBuilder(methodName.capitalize())
-                    .superclass(baseClassName)
-                    .primaryConstructor(constructorSpec)
-                    .addProperty(responsePropertySpec)
-                    .addProperties(propertiesSpec)
-                    .build()
-        }
+        actorInitializerFragments.addAll(messageHandlerFragments(visibleMethodElements, messageBaseClassName))
+
+        actorInitializerFragments.add(
+                """ |    }
+                    |  }
+                    |}
+                    |""".trimMargin()
+        )
+
+        val actorInitializer = actorInitializerFragments.joinToString("")
+        val actorClassName = ParameterizedTypeName.get(ClassName("kotlinx.coroutines.experimental.channels", "ActorJob"), messageBaseClassName)
+        return PropertySpec
+                .builder(ACTOR_PROP_NAME, actorClassName, KModifier.PRIVATE)
+                .initializer(actorInitializer)
+                .build()
+    }
+
+    private fun messageHandlerFragments(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName) = visibleMethodElements.map { method ->
+        val delegateMethodName = method.simpleName.toString()
+        val messageName = messageBaseClassName.simpleName() + "." + delegateMethodName.capitalize()
+        val parameters = method.parameters
+                .map { parameter -> "msg." + parameter.simpleName }
+        val parameterList = parameters.joinToString()
+
+        """ |      is $messageName -> {
+            |        try {
+            |          val result = delegate.$delegateMethodName($parameterList)
+            |          msg.response?.complete(result)
+            |        } catch (t: Throwable) {
+            |           val currentThread = Thread.currentThread()
+            |           msg.response?.completeExceptionally(t)
+            |               ?: currentThread.uncaughtExceptionHandler.uncaughtException(currentThread, t)
+            |        }
+            |      }
+            |""".trimMargin()
+    }
+
+    private fun delegteMethodSpecs(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName) = visibleMethodElements.flatMap { method ->
+        arrayListOf(
+                delegateMethodSpec(method, messageBaseClassName),
+                fireAndForgetDelegateMethodSpec(method, messageBaseClassName),
+                asyncDelegateMethodSpec(method, messageBaseClassName)
+        )
+    }
+
+    private fun delegateMethodSpec(method: ExecutableElement, messageBaseClassName: ClassName): FunSpec {
+        val delegateReturnTypeName = method.returnType.asTypeName()
+        val returnTypeName = ParameterizedTypeName.get(
+                ClassName("kotlinx.coroutines.experimental", "CompletableDeferred"),
+                delegateReturnTypeName)
+
+        val delegateMethodName = method.simpleName.toString()
+        val methodName = delegateMethodName
+        val messageName = messageBaseClassName.simpleName() + "." + delegateMethodName.capitalize()
+
+        val parameterSpecs = method.parameters
+                .map { parameter ->
+                    ParameterSpec.builder(parameter.simpleName.toString(), parameter.asType().asTypeName())
+                            .build()
+                }
+        val messageParameters = listOf("response") + method.parameters
+                .map { parameter -> parameter.simpleName }
+        val messageParameterList = messageParameters.joinToString()
+
+        return FunSpec.builder(methodName)
+                .addModifiers(KModifier.SUSPEND)
+                .addParameters(parameterSpecs)
+                .returns(returnTypeName)
+                .addCode(
+                        """ |val response = $returnTypeName()
+                            |actor.send($messageName($messageParameterList))
+                            |return response
+                            |""".trimMargin())
+                .build()
+    }
+
+    private fun fireAndForgetDelegateMethodSpec(method: ExecutableElement, messageBaseClassName: ClassName): FunSpec {
+        val delegateMethodName = method.simpleName.toString()
+
+        val parameterSpecs = method.parameters
+                .map { parameter ->
+                    ParameterSpec.builder(parameter.simpleName.toString(), parameter.asType().asTypeName())
+                            .build()
+                }
+        val messageParameters = listOf("null") + method.parameters
+                .map { parameter -> parameter.simpleName }
+        val messageParameterList = messageParameters.joinToString()
+
+        val messageName = messageBaseClassName.simpleName() + "." + delegateMethodName.capitalize()
+        return FunSpec.builder(method.simpleName.toString() + FIREANDFORGET_METHOD_SUFFIX)
+                .addModifiers(KModifier.SUSPEND)
+                .addParameters(parameterSpecs)
+                .returns(UNIT)
+                .addCode("actor.send($messageName($messageParameterList))\n")
+                .build()
+
+    }
+
+    private fun asyncDelegateMethodSpec(method: ExecutableElement, messageBaseClassName: ClassName): FunSpec {
+        val delegateMethodName = method.simpleName.toString()
+        val delegateReturnType = method.returnType.asTypeName()
+
+        val parameterSpecs = method.parameters
+                .map { parameter ->
+                    ParameterSpec.builder(parameter.simpleName.toString(), parameter.asType().asTypeName())
+                            .build()
+                }
+        val messageParameters = method.parameters
+                .map { parameter -> parameter.simpleName }
+        val messageParameterList = messageParameters.joinToString()
+
+        return FunSpec.builder(method.simpleName.toString() + ASYNC_METHOD_SUFFIX)
+                .addModifiers(KModifier.SUSPEND)
+                .addParameters(parameterSpecs)
+                .returns(delegateReturnType)
+                .addCode("return $delegateMethodName($messageParameterList).await()\n")
+                .build()
+
+    }
+
+    private fun messageTypeSpecs(visibleMethodElements: List<ExecutableElement>, baseClassName: ClassName) = visibleMethodElements.map { method ->
+        val methodName = method.simpleName.toString()
+        val methodParameters = method.parameters
+        val responseTypeName = ParameterizedTypeName.get(
+                ClassName("kotlinx.coroutines.experimental", "CompletableDeferred"),
+                method.returnType.asTypeName()).asNullable()
+        val constructorResponseParameterSpec = ParameterSpec
+                .builder(RESPONES_PROP_NAME, responseTypeName)
+                .build()
+        val constructorParametersFromMethodSpec = methodParameters.toParameterSpecList()
+        val constructorSpec = FunSpec.constructorBuilder()
+                .addParameter(constructorResponseParameterSpec)
+                .addParameters(constructorParametersFromMethodSpec)
+                .build()
+        val responsePropertySpec = PropertySpec
+                .builder(RESPONES_PROP_NAME, responseTypeName)
+                .initializer(RESPONES_PROP_NAME)
+                .build()
+        val propertiesSpec = methodParameters.toPropertySpecList()
+
+        TypeSpec.classBuilder(methodName.capitalize())
+                .superclass(baseClassName)
+                .primaryConstructor(constructorSpec)
+                .addProperty(responsePropertySpec)
+                .addProperties(propertiesSpec)
+                .build()
     }
 
     private fun VariableElement.toParameterSpecList(): ParameterSpec {
@@ -131,3 +268,4 @@ class KActorAnnotationProcessor : AbstractProcessor() {
         parameter.toPropertySpecList()
     }
 }
+

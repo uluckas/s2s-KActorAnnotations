@@ -1,11 +1,11 @@
 package de.musoft.annotationProcessor.test
 
-import de.musoft.annotationProcessor.KActorAnnotation
+import de.musoft.annotationProcessor.KActor
 
-@KActorAnnotation
+@KActor
 class Counter {
     private var i = 0
-    private var counterActor = CounterActor()
+
     fun getI() = i
 
     fun setI(value: Int) {
@@ -13,8 +13,6 @@ class Counter {
     }
 
     fun inc() {
-        //synchronized(this) {
         i++
-        //}
     }
 }

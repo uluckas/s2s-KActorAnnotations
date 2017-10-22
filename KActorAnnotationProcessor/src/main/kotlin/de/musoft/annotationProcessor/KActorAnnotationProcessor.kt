@@ -5,7 +5,12 @@ import java.io.File
 import javax.annotation.processing.*
 import javax.lang.model.SourceVersion
 import javax.lang.model.element.*
-import javax.tools.Diagnostic.Kind.*
+import javax.tools.Diagnostic.Kind.ERROR
+
+private const val ACTOR_CLASS_POSTFIX = "Actor"
+private const val MESSAGE_CLASS_POSTFIX = "Msg"
+private const val CONTEXT_PROP_NAME = "context"
+private const val RESPONES_PROP_NAME = "response"
 
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("de.musoft.annotationProcessor.KActorAnnotation")
@@ -24,85 +29,105 @@ class KActorAnnotationProcessor : AbstractProcessor() {
             return false
         }
 
-        //processingEnv.messager.printMessage(ERROR, "Processing annotations $annotations")
-        for (element : Element in annotatedElements) {
-            //processingEnv.messager.printMessage(ERROR, "Processing element $element")
+        for (element: Element in annotatedElements) {
             val typeElement = element as? TypeElement ?: continue
             val packageElement = typeElement.enclosingElement as? PackageElement ?: continue
             val packageName = packageElement.toString()
-            val actorClassName = typeElement.simpleName.toString() + "Actor"
-            val messageBaseClassName = actorClassName + "Message"
+            val actorClassName = ClassName(packageName, typeElement.simpleName.toString() + ACTOR_CLASS_POSTFIX)
 
-            val fileSpecBuilder = FileSpec.builder(packageName, actorClassName)
-
-            // KotlinPoet actor message base class
-            fileSpecBuilder.addType(
-                    messageBaseClassSpec(messageBaseClassName)
-            )
-
-            val visibleMethodElements = typeElement.enclosedElements
-                    .filter { it.kind == ElementKind.METHOD}
-                    .filter { !it.modifiers.contains(Modifier.PRIVATE) }
-
-            val actorMessageSpecs = messageTypeSpecs(visibleMethodElements, actorClassName, packageName, messageBaseClassName)
-
-            actorMessageSpecs.forEach {
-                fileSpecBuilder.addType(it)
-            }
-
-            fileSpecBuilder.addType(
-                    actorClassSpec(actorClassName)
-            )
-
-            var file = File(kaptKotlinGeneratedDir, actorClassName)
-            file.parentFile.mkdirs()
-            fileSpecBuilder.build().writeTo(file)
+            val fileSpec = FileSpec.get(packageName, actorClassSpec(typeElement, actorClassName))
+            fileSpec.writeTo(File(kaptKotlinGeneratedDir).toPath())
         }
 
         return true
     }
 
-    private fun messageBaseClassSpec(messageBaseClassName: String): TypeSpec {
+    private fun messageBaseClassSpec(typeElement: TypeElement, messageBaseClassName: ClassName): TypeSpec {
+
+        val visibleMethodElements = typeElement.enclosedElements
+                .filter { it.kind == ElementKind.METHOD }
+                .filter { !it.modifiers.contains(Modifier.PRIVATE) }
+        val actorMessageSpecs = messageTypeSpecs(visibleMethodElements, messageBaseClassName)
+
+
         return TypeSpec.classBuilder(messageBaseClassName)
-                .addModifiers(KModifier.SEALED)
+                .addModifiers(KModifier.SEALED, KModifier.PRIVATE)
+                .addTypes(actorMessageSpecs)
                 .build()
     }
 
-    private fun actorClassSpec(className: String) =
-            TypeSpec.classBuilder(className)
-                    .build()
+    private fun actorClassSpec(typeElement: TypeElement, actorClassName: ClassName): TypeSpec {
+        val contextTypeClassName = ClassName("kotlinx.coroutines.experimental", "CoroutineDispatcher")
+        val contextParameterSpec = ParameterSpec
+                .builder(CONTEXT_PROP_NAME, contextTypeClassName)
+                .defaultValue("kotlinx.coroutines.experimental.DefaultDispatcher")
+                .build()
+        val constructorSpec = FunSpec.constructorBuilder()
+                .addParameter(contextParameterSpec)
+                .build()
+        val contextPropertySpec = PropertySpec
+                .builder(CONTEXT_PROP_NAME, contextTypeClassName)
+                .addModifiers(KModifier.PRIVATE)
+                .initializer(CONTEXT_PROP_NAME)
+                .build()
+        val messageBaseClassName = actorClassName.nestedClass(typeElement.simpleName.toString() + MESSAGE_CLASS_POSTFIX)
+        val messageBaseClassSpec = messageBaseClassSpec(typeElement, messageBaseClassName)
 
-    private fun messageTypeSpecs(methodElements: List<Element>, className: String, packageName: String, baseClassName: String): List<TypeSpec> {
+        return TypeSpec.classBuilder(actorClassName)
+                .primaryConstructor(constructorSpec)
+                .addProperty(contextPropertySpec)
+                .addType(messageBaseClassSpec)
+                .build()
+    }
+
+    private fun messageTypeSpecs(methodElements: List<Element>, baseClassName: ClassName): List<TypeSpec> {
         return methodElements.map { method ->
             method as ExecutableElement
             val methodName = method.simpleName.toString()
-            val parameters = method.parameters
-            val constructorPropertiesSpec = parameters.map { parameter ->
-                val parameterName = parameter.simpleName.toString()
-                val parameterTypeName = ClassName(parameter)
-                ParameterSpec.builder(parameterName, parameterTypeName).build()
-            }
-            val constructorSpec = FunSpec.constructorBuilder().addParameters(constructorPropertiesSpec).build()
+            val methodParameters = method.parameters
+            val responseClassName = ParameterizedTypeName.get(
+                    ClassName("kotlinx.coroutines.experimental", "CompletableDeferred"),
+                    method.returnType.asTypeName()).asNullable()
+            val constructorResponseParameterSpec = ParameterSpec
+                    .builder(RESPONES_PROP_NAME, responseClassName)
+                    .build()
+            val constructorParametersFromMethodSpec = methodParameters.toParameterSpecList()
+            val constructorSpec = FunSpec.constructorBuilder()
+                    .addParameter(constructorResponseParameterSpec)
+                    .addParameters(constructorParametersFromMethodSpec)
+                    .build()
+            val responsePropertySpec = PropertySpec
+                    .builder(RESPONES_PROP_NAME, responseClassName)
+                    .initializer(RESPONES_PROP_NAME)
+                    .build()
+            val propertiesSpec = methodParameters.toPropertySpecList()
 
-            TypeSpec.classBuilder(className + methodName.capitalize() + "Message")
-                    .superclass(ClassName(packageName, baseClassName))
+            TypeSpec.classBuilder(methodName.capitalize())
+                    .superclass(baseClassName)
                     .primaryConstructor(constructorSpec)
+                    .addProperty(responsePropertySpec)
+                    .addProperties(propertiesSpec)
                     .build()
         }
     }
 
-    operator fun ClassName.Companion.invoke(element: Element) : ClassName {
-        val parentNames = mutableListOf<String>()
-        val topName = element.simpleName.toString()
-        var parent = element.enclosingElement
-        while (parent.kind != ElementKind.PACKAGE) {
-            val parentName = parent.simpleName.toString()
-            processingEnv.messager.printMessage(ERROR, "$parentName is of kind ${parent.kind}")
-            parentNames.add(parentName)
-            parent = element.enclosingElement
-        }
-        val packageName = parent.simpleName.toString()
+    private fun VariableElement.toParameterSpecList(): ParameterSpec {
+        val parameterName = simpleName.toString()
+        val parameterTypeName = asType().asTypeName()
+        return ParameterSpec.builder(parameterName, parameterTypeName).build()
+    }
 
-        return ClassName(packageName, topName, *parentNames.toTypedArray())
+    private fun List<VariableElement>.toParameterSpecList() = map { parameter ->
+        parameter.toParameterSpecList()
+    }
+
+    private fun VariableElement.toPropertySpecList(): PropertySpec {
+        val parameterName = simpleName.toString()
+        val parameterTypeName = asType().asTypeName()
+        return PropertySpec.builder(parameterName, parameterTypeName).initializer(parameterName).build()
+    }
+
+    private fun List<VariableElement>.toPropertySpecList() = map { parameter ->
+        parameter.toPropertySpecList()
     }
 }

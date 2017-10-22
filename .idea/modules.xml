@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/KActor.iml" filepath="$PROJECT_DIR$/.idea/modules/KActor.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/KActorAnnotationProcessor/KActorAnnotationProcessor.iml" filepath="$PROJECT_DIR$/.idea/modules/KActorAnnotationProcessor/KActorAnnotationProcessor.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/KActorTest/KActorTest.iml" filepath="$PROJECT_DIR$/.idea/modules/KActorTest/KActorTest.iml" />
+    </modules>
+  </component>
+</project>

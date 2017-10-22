@@ -9,8 +9,16 @@ compileTestKotlin {
     kotlinOptions.jvmTarget = "1.8"
 }
 
+kotlin {
+    experimental {
+        coroutines 'enable'
+    }
+}
+
 dependencies {
     compile project(":KActorAnnotationProcessor")
     kapt project(":KActorAnnotationProcessor")
+    compile "org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version"
+    compile "org.jetbrains.kotlinx:kotlinx-coroutines-core:$kotlin_coroutines_version"
 }
 

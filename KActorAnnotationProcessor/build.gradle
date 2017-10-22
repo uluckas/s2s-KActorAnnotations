@@ -10,6 +10,6 @@ compileTestKotlin {
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jre8:$kotlin_version"
+    compile "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
     compile 'com.squareup:kotlinpoet:0.5.0'
-    //compile "com.github.yanex:takenoko:0.1"
 }

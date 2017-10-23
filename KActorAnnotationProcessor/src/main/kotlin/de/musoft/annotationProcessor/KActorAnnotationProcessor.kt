@@ -71,12 +71,37 @@ class KActorAnnotationProcessor : AbstractProcessor() {
                 .builder(CONTEXT_PROP_NAME, contextTypeClassName)
                 .defaultValue("kotlinx.coroutines.experimental.DefaultDispatcher")
                 .build()
-        val constructorSpec = FunSpec.constructorBuilder()
-                .addParameter(contextParameterSpec)
+        val delegateParameterSpec = ParameterSpec
+                .builder(DELEGATE_PROP_NAME, annotatedTypeElement.asClassName())
                 .build()
-        val delegatePropertySpec = PropertySpec
-                .builder(DELEGATE_PROP_NAME, annotatedTypeElement.asClassName(), KModifier.PRIVATE)
-                .initializer("${annotatedTypeElement.simpleName}()")
+        val visibleDelegateConstructorElements = annotatedTypeElement.enclosedElements
+                .filterNot { it.modifiers.contains(Modifier.PRIVATE) }
+                .mapNotNull { it as? ExecutableElement }
+                .filter { it.kind == ElementKind.CONSTRUCTOR }
+        val visibleDelegateConstructorsParameters = visibleDelegateConstructorElements.map { delegateConstructorElement ->
+            delegateConstructorElement.parameters
+        }
+        val delegateConstructorsParameterSpecs = visibleDelegateConstructorsParameters.map { visibleDelegateConstructorParameters ->
+            visibleDelegateConstructorParameters.map { visibleDelegateConstructorParameter ->
+                ParameterSpec.builder(visibleDelegateConstructorParameter.simpleName.toString(), visibleDelegateConstructorParameter.asType().asTypeName())
+                        .build()
+            }
+        }
+        val constructorSpecs = delegateConstructorsParameterSpecs.map { constructorParameterSpecs ->
+            val parameterValues = constructorParameterSpecs
+                    .joinToString() { constructorParameterSpec ->
+                        constructorParameterSpec.name
+                    }
+            FunSpec.constructorBuilder()
+                    .addParameters(constructorParameterSpecs)
+                    .addParameter(contextParameterSpec)
+                    .callThisConstructor("${annotatedTypeElement.simpleName}($parameterValues), $CONTEXT_PROP_NAME")
+                    .build()
+        }
+        val primaryConstructorSpec = FunSpec.constructorBuilder()
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter(delegateParameterSpec)
+                .addParameter(contextParameterSpec)
                 .build()
         val messageBaseClassName = actorClassName.nestedClass(annotatedTypeElement.simpleName.toString() + MESSAGE_CLASS_SUFFIX)
         val messageBaseClassSpec = messageBaseClassSpec(visibleMethodElements, messageBaseClassName)
@@ -85,9 +110,9 @@ class KActorAnnotationProcessor : AbstractProcessor() {
         val delegateMethodSpecs = delegteMethodSpecs(visibleMethodElements, messageBaseClassName)
 
         return TypeSpec.classBuilder(actorClassName)
-                .primaryConstructor(constructorSpec)
+                .primaryConstructor(primaryConstructorSpec)
+                .addFunctions(constructorSpecs)
                 .addType(messageBaseClassSpec)
-                .addProperty(delegatePropertySpec)
                 .addProperty(actorPropertySpec)
                 .addFunctions(delegateMethodSpecs)
                 .build()
@@ -121,9 +146,10 @@ class KActorAnnotationProcessor : AbstractProcessor() {
     private fun messageHandlerFragments(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName) = visibleMethodElements.map { method ->
         val delegateMethodName = method.simpleName.toString()
         val messageName = messageBaseClassName.simpleName() + "." + delegateMethodName.capitalize()
-        val parameters = method.parameters
-                .map { parameter -> "msg." + parameter.simpleName }
-        val parameterList = parameters.joinToString()
+        val parameterList = method.parameters
+                .joinToString { parameter ->
+                    "msg." + parameter.simpleName
+                }
 
         """ |      is $messageName -> {
             |        try {

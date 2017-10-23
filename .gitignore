@@ -27,6 +27,7 @@ tmtags
 
 .gradle
 build
+local.properties
 
 # CMake
 cmake-build-debug/

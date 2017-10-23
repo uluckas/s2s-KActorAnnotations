@@ -15,6 +15,7 @@ private const val ACTOR_PROP_NAME = "actor"
 private const val RESPONES_PROP_NAME = "response"
 private const val FIREANDFORGET_METHOD_SUFFIX = "AndForget"
 private const val ASYNC_METHOD_SUFFIX = "Async"
+private const val RESPONSE_PARAMETER_NAME = "response"
 
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("de.musoft.annotationProcessor.KActor")
@@ -155,23 +156,26 @@ class KActorAnnotationProcessor : AbstractProcessor() {
         val methodName = delegateMethodName
         val messageName = messageBaseClassName.simpleName() + "." + delegateMethodName.capitalize()
 
+        val responseParameterSpec = ParameterSpec.builder(RESPONSE_PARAMETER_NAME, returnTypeName)
+                .defaultValue("$returnTypeName()")
+                .build()
         val parameterSpecs = method.parameters
                 .map { parameter ->
                     ParameterSpec.builder(parameter.simpleName.toString(), parameter.asType().asTypeName())
                             .build()
                 }
-        val messageParameters = listOf("response") + method.parameters
-                .map { parameter -> parameter.simpleName }
+        val messageParameters = listOf("response") +
+                method.parameters.map { parameter -> parameter.simpleName }
         val messageParameterList = messageParameters.joinToString()
 
         return FunSpec.builder(methodName)
                 .addModifiers(KModifier.SUSPEND)
                 .addParameters(parameterSpecs)
+                .addParameter(responseParameterSpec)
                 .returns(returnTypeName)
                 .addCode(
-                        """ |val response = $returnTypeName()
-                            |actor.send($messageName($messageParameterList))
-                            |return response
+                        """ |actor.send($messageName($messageParameterList))
+                            |return $RESPONSE_PARAMETER_NAME
                             |""".trimMargin())
                 .build()
     }

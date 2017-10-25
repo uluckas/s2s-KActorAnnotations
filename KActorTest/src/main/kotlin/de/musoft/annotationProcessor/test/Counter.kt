@@ -1,18 +1,21 @@
 package de.musoft.annotationProcessor.test
 
 import de.musoft.annotationProcessor.KActor
+import kotlinx.coroutines.experimental.CompletableDeferred
 
 @KActor
-class Counter {
+open class Counter {
     private var i = 0
 
-    fun getI() = i
+    open fun getI(i: CompletableDeferred<Int>) {
 
-    fun setI(value: Int) {
+    }
+
+    open fun setI(value: Int) {
         i = value
     }
 
-    fun inc() {
+    open fun inc() {
         i++
     }
 }

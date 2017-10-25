@@ -1,5 +1,6 @@
 package de.musoft.annotationProcessor.test
 
+import kotlinx.coroutines.experimental.CompletableDeferred
 import kotlinx.coroutines.experimental.launch
 import kotlinx.coroutines.experimental.runBlocking
 
@@ -13,11 +14,13 @@ fun main(args: Array<String>) {
         val jobs = List(size = concurrent) {
             launch {
                 repeat(operations) {
-                    actor.incAndForget()
+                    actor.inc()
                 }
             }
         }
         jobs.forEach { job -> job.join() }
-        println("Final value: ${actor.getI().await()}")
+        val result = CompletableDeferred<Int>()
+        actor.getI(result)
+        println("Final value: ${result.await()}")
     }
 }

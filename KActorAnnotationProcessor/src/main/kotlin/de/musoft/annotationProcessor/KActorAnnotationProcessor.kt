@@ -11,6 +11,7 @@ private const val ACTOR_CLASS_SUFFIX = "Actor"
 private const val MESSAGE_CLASS_SUFFIX = "Msg"
 private const val CONTEXT_PROP_NAME = "context"
 private const val ACTOR_PROP_NAME = "actor"
+private const val DELEGATE_PROP_NAME = "delegate"
 
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("de.musoft.annotationProcessor.KActor")
@@ -67,7 +68,36 @@ class KActorAnnotationProcessor : AbstractProcessor() {
                 .builder(CONTEXT_PROP_NAME, contextTypeClassName)
                 .defaultValue("kotlinx.coroutines.experimental.DefaultDispatcher")
                 .build()
-        val constructorSpec = FunSpec.constructorBuilder()
+        val delegateParameterSpec = ParameterSpec
+                .builder(DELEGATE_PROP_NAME, annotatedTypeElement.asClassName())
+                .build()
+        val visibleDelegateConstructorElements = annotatedTypeElement.enclosedElements
+                .filterNot { it.modifiers.contains(Modifier.PRIVATE) }
+                .mapNotNull { it as? ExecutableElement }
+                .filter { it.kind == ElementKind.CONSTRUCTOR }
+        val visibleDelegateConstructorsParameters = visibleDelegateConstructorElements.map { delegateConstructorElement ->
+            delegateConstructorElement.parameters
+        }
+        val delegateConstructorsParameterSpecs = visibleDelegateConstructorsParameters.map { visibleDelegateConstructorParameters ->
+            visibleDelegateConstructorParameters.map { visibleDelegateConstructorParameter ->
+                ParameterSpec.builder(visibleDelegateConstructorParameter.simpleName.toString(), visibleDelegateConstructorParameter.asType().asTypeName())
+                        .build()
+            }
+        }
+        val constructorSpecs = delegateConstructorsParameterSpecs.map { constructorParameterSpecs ->
+            val parameterValues = constructorParameterSpecs
+                    .joinToString() { constructorParameterSpec ->
+                        constructorParameterSpec.name
+                    }
+            FunSpec.constructorBuilder()
+                    .addParameters(constructorParameterSpecs)
+                    .addParameter(contextParameterSpec)
+                    .callThisConstructor("${annotatedTypeElement.simpleName}($parameterValues), $CONTEXT_PROP_NAME")
+                    .build()
+        }
+        val primaryConstructorSpec = FunSpec.constructorBuilder()
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter(delegateParameterSpec)
                 .addParameter(contextParameterSpec)
                 .build()
         val messageBaseClassName = actorClassName.nestedClass(annotatedTypeElement.simpleName.toString() + MESSAGE_CLASS_SUFFIX)
@@ -78,7 +108,8 @@ class KActorAnnotationProcessor : AbstractProcessor() {
 
         return TypeSpec.classBuilder(actorClassName)
                 .superclass(annotatedTypeElement.asClassName())
-                .primaryConstructor(constructorSpec)
+                .primaryConstructor(primaryConstructorSpec)
+                .addFunctions(constructorSpecs)
                 .addType(messageBaseClassSpec)
                 .addProperty(actorPropertySpec)
                 .addFunctions(delegateMethodSpecs)
@@ -113,9 +144,10 @@ class KActorAnnotationProcessor : AbstractProcessor() {
     private fun messageHandlerFragments(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName) = visibleMethodElements.map { method ->
         val delegateMethodName = method.simpleName.toString()
         val messageName = messageBaseClassName.simpleName() + "." + delegateMethodName.capitalize()
-        val parameters = method.parameters
-                .map { parameter -> "msg." + parameter.simpleName }
-        val parameterList = parameters.joinToString()
+        val parameterList = method.parameters
+                .joinToString { parameter ->
+                    "msg." + parameter.simpleName
+                }
 
         """ |      is $messageName -> {
             |        try {

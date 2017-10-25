@@ -24,8 +24,19 @@
         </compilerArguments>
       </configuration>
     </facet>
+    <facet type="android-gradle" name="Android-Gradle">
+      <configuration>
+        <option name="GRADLE_PROJECT_PATH" value=":KActorTest" />
+      </configuration>
+    </facet>
+    <facet type="java-gradle" name="Java-Gradle">
+      <configuration>
+        <option name="BUILD_FOLDER_PATH" value="$MODULE_DIR$/../../../KActorTest/build" />
+        <option name="BUILDABLE" value="true" />
+      </configuration>
+    </facet>
   </component>
-  <component name="NewModuleRootManager">
+  <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_1_8">
     <output url="file://$MODULE_DIR$/../../../KActorTest/out/production/classes" />
     <output-test url="file://$MODULE_DIR$/../../../KActorTest/out/test/classes" />
     <exclude-output />

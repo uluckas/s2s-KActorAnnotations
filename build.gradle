@@ -13,10 +13,6 @@ buildscript {
     }
 }
 
-apply plugin: 'application'
-
-mainClassName = "de.musoft.annotationprocessor.test.MainKt"
-
 allprojects {
     group 'de.musoft'
     version '1.0-SNAPSHOT'

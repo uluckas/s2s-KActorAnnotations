@@ -11,7 +11,6 @@ private const val ACTOR_CLASS_SUFFIX = "Actor"
 private const val MESSAGE_CLASS_SUFFIX = "Msg"
 private const val CONTEXT_PROP_NAME = "context"
 private const val ACTOR_PROP_NAME = "actor"
-private const val DELEGATE_PROP_NAME = "delegate"
 
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("de.musoft.annotationProcessor.KActor")
@@ -38,7 +37,7 @@ class KActorAnnotationProcessor : AbstractProcessor() {
 
             val fileSpec = FileSpec.builder(packageName, actorClassName.simpleName())
                     .addStaticImport("kotlinx.coroutines.experimental.channels", "actor")
-                    .addStaticImport("kotlinx.coroutines.experimental","runBlocking")
+                    .addStaticImport("kotlinx.coroutines.experimental", "runBlocking")
                     .addType(actorClassSpec(annotatedTypeElement, actorClassName))
                     .build()
             fileSpec.writeTo(File(kaptKotlinGeneratedDir).toPath())
@@ -68,8 +67,9 @@ class KActorAnnotationProcessor : AbstractProcessor() {
                 .builder(CONTEXT_PROP_NAME, contextTypeClassName)
                 .defaultValue("kotlinx.coroutines.experimental.DefaultDispatcher")
                 .build()
-        val delegateParameterSpec = ParameterSpec
-                .builder(DELEGATE_PROP_NAME, annotatedTypeElement.asClassName())
+        val contextPropertySpec = PropertySpec
+                .varBuilder(CONTEXT_PROP_NAME, contextTypeClassName)
+                .addModifiers(KModifier.LATEINIT)
                 .build()
         val visibleDelegateConstructorElements = annotatedTypeElement.enclosedElements
                 .filterNot { it.modifiers.contains(Modifier.PRIVATE) }
@@ -85,21 +85,15 @@ class KActorAnnotationProcessor : AbstractProcessor() {
             }
         }
         val constructorSpecs = delegateConstructorsParameterSpecs.map { constructorParameterSpecs ->
-            val parameterValues = constructorParameterSpecs
-                    .joinToString() { constructorParameterSpec ->
-                        constructorParameterSpec.name
-                    }
+            val constructorParameterList = constructorParameterSpecs.joinToString { it.name }
+
             FunSpec.constructorBuilder()
                     .addParameters(constructorParameterSpecs)
                     .addParameter(contextParameterSpec)
-                    .callThisConstructor("${annotatedTypeElement.simpleName}($parameterValues), $CONTEXT_PROP_NAME")
+                    .callSuperConstructor(constructorParameterList)
+                    .addCode("this.$CONTEXT_PROP_NAME = $CONTEXT_PROP_NAME\n")
                     .build()
         }
-        val primaryConstructorSpec = FunSpec.constructorBuilder()
-                .addModifiers(KModifier.PRIVATE)
-                .addParameter(delegateParameterSpec)
-                .addParameter(contextParameterSpec)
-                .build()
         val messageBaseClassName = actorClassName.nestedClass(annotatedTypeElement.simpleName.toString() + MESSAGE_CLASS_SUFFIX)
         val messageBaseClassSpec = messageBaseClassSpec(visibleMethodElements, messageBaseClassName)
         val actorPropertySpec = actorPropertySpec(visibleMethodElements, messageBaseClassName)
@@ -108,9 +102,9 @@ class KActorAnnotationProcessor : AbstractProcessor() {
 
         return TypeSpec.classBuilder(actorClassName)
                 .superclass(annotatedTypeElement.asClassName())
-                .primaryConstructor(primaryConstructorSpec)
                 .addFunctions(constructorSpecs)
                 .addType(messageBaseClassSpec)
+                .addProperty(contextPropertySpec)
                 .addProperty(actorPropertySpec)
                 .addFunctions(delegateMethodSpecs)
                 .build()
@@ -175,7 +169,7 @@ class KActorAnnotationProcessor : AbstractProcessor() {
                 .addModifiers(KModifier.OVERRIDE)
                 .addParameters(parameterSpecs)
                 .returns(UNIT)
-                .addCode("runBlocking { actor.send($messageName($messageParameterList)) }\n")
+                .addCode("actor.offer($messageName($messageParameterList))\n")
                 .build()
     }
 

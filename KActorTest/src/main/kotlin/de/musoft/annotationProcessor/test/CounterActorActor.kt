@@ -7,9 +7,7 @@ import kotlinx.coroutines.experimental.channels.actor
 
 class CounterActorActor : Counter {
 
-    lateinit var context: CoroutineDispatcher
-
-    private val actor: ActorJob<CounterMsg> = actor(context) {
+    private fun actorFactory(context: CoroutineDispatcher): ActorJob<CounterMsg> = actor(context) {
         println("Actor up and running")
         for (msg in channel) {
             when (msg) {
@@ -41,9 +39,12 @@ class CounterActorActor : Counter {
         }
     }
 
-    constructor(dummy: java.lang.String, context: CoroutineDispatcher = kotlinx.coroutines.experimental.DefaultDispatcher) : super(dummy) {
-        this.context = context
+    private val actor: ActorJob<CounterMsg>
+
+    constructor(i: Integer, context: CoroutineDispatcher = kotlinx.coroutines.experimental.DefaultDispatcher) : super(i) {
+        this.actor = actorFactory(context)
     }
+
 
     override fun getI(result: CompletableDeferred<Integer>): Unit {
         actor.offer(CounterMsg.GetI(result))
@@ -65,3 +66,4 @@ class CounterActorActor : Counter {
         class Inc(val result: CompletableDeferred<Unit>) : CounterMsg()
     }
 }
+

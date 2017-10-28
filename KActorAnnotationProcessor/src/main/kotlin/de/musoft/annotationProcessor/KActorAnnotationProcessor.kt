@@ -9,8 +9,9 @@ import javax.tools.Diagnostic.Kind.ERROR
 
 private const val ACTOR_CLASS_SUFFIX = "Actor"
 private const val MESSAGE_CLASS_SUFFIX = "Msg"
-private const val CONTEXT_PROP_NAME = "context"
+private const val CONTEXT_VAR_NAME = "context"
 private const val ACTOR_PROP_NAME = "actor"
+private const val ACTORFACTORY_FUNC_NAME = "actorFactory"
 
 @SupportedSourceVersion(SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("de.musoft.annotationProcessor.KActor")
@@ -37,7 +38,7 @@ class KActorAnnotationProcessor : AbstractProcessor() {
 
             val fileSpec = FileSpec.builder(packageName, actorClassName.simpleName())
                     .addStaticImport("kotlinx.coroutines.experimental.channels", "actor")
-                    .addStaticImport("kotlinx.coroutines.experimental", "runBlocking")
+                    .addStaticImport("kotlinx.coroutines.experimental.channels", "Channel")
                     .addType(actorClassSpec(annotatedTypeElement, actorClassName))
                     .build()
             fileSpec.writeTo(File(kaptKotlinGeneratedDir).toPath())
@@ -57,19 +58,15 @@ class KActorAnnotationProcessor : AbstractProcessor() {
     }
 
     private fun actorClassSpec(annotatedTypeElement: TypeElement, actorClassName: ClassName): TypeSpec {
-        val contextTypeClassName = ClassName("kotlinx.coroutines.experimental", "CoroutineDispatcher")
+        val contextTypeClassName = ClassName("kotlin.coroutines.experimental", "CoroutineContext")
         val visibleMethodElements = annotatedTypeElement.enclosedElements
                 .filterNot { it.modifiers.contains(Modifier.PRIVATE) }
                 .filterNot { it.modifiers.contains(Modifier.PROTECTED) }
                 .mapNotNull { it as? ExecutableElement }
                 .filter { it.kind == ElementKind.METHOD }
         val contextParameterSpec = ParameterSpec
-                .builder(CONTEXT_PROP_NAME, contextTypeClassName)
+                .builder(CONTEXT_VAR_NAME, contextTypeClassName)
                 .defaultValue("kotlinx.coroutines.experimental.DefaultDispatcher")
-                .build()
-        val contextPropertySpec = PropertySpec
-                .varBuilder(CONTEXT_PROP_NAME, contextTypeClassName)
-                .addModifiers(KModifier.LATEINIT)
                 .build()
         val visibleDelegateConstructorElements = annotatedTypeElement.enclosedElements
                 .filterNot { it.modifiers.contains(Modifier.PRIVATE) }
@@ -84,35 +81,37 @@ class KActorAnnotationProcessor : AbstractProcessor() {
                         .build()
             }
         }
-        val constructorSpecs = delegateConstructorsParameterSpecs.map { constructorParameterSpecs ->
-            val constructorParameterList = constructorParameterSpecs.joinToString { it.name }
+        val constructorSpecs = delegateConstructorsParameterSpecs
+                .map { constructorParameterSpecs ->
+                    val constructorParameterList = constructorParameterSpecs.joinToString { it.name }
 
-            FunSpec.constructorBuilder()
-                    .addParameters(constructorParameterSpecs)
-                    .addParameter(contextParameterSpec)
-                    .callSuperConstructor(constructorParameterList)
-                    .addCode("this.$CONTEXT_PROP_NAME = $CONTEXT_PROP_NAME\n")
-                    .build()
-        }
+                    FunSpec.constructorBuilder()
+                            .addParameters(constructorParameterSpecs)
+                            .addParameter(contextParameterSpec)
+                            .callSuperConstructor(constructorParameterList)
+                            .addCode("this.$ACTOR_PROP_NAME = $ACTORFACTORY_FUNC_NAME($CONTEXT_VAR_NAME)\n")
+                            .build()
+                }
         val messageBaseClassName = actorClassName.nestedClass(annotatedTypeElement.simpleName.toString() + MESSAGE_CLASS_SUFFIX)
         val messageBaseClassSpec = messageBaseClassSpec(visibleMethodElements, messageBaseClassName)
-        val actorPropertySpec = actorPropertySpec(visibleMethodElements, messageBaseClassName)
+        val actorPropertySpec = actorPropertySpec(messageBaseClassName)
+        val actorFactoryFunSpec = actorFactoryFunSpec(visibleMethodElements, messageBaseClassName)
 
-        val delegateMethodSpecs = delegteMethodSpecs(visibleMethodElements, messageBaseClassName)
+        val delegateMethodSpecs = delegateMethodSpecs(visibleMethodElements, messageBaseClassName)
 
         return TypeSpec.classBuilder(actorClassName)
                 .superclass(annotatedTypeElement.asClassName())
                 .addFunctions(constructorSpecs)
                 .addType(messageBaseClassSpec)
-                .addProperty(contextPropertySpec)
                 .addProperty(actorPropertySpec)
+                .addFunction(actorFactoryFunSpec)
                 .addFunctions(delegateMethodSpecs)
                 .build()
     }
 
-    private fun actorPropertySpec(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName): PropertySpec {
+    private fun actorFactoryFunSpec(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName): FunSpec {
         val actorInitializerFragments = mutableListOf(
-                """ |actor(context) {
+                """ |return actor($CONTEXT_VAR_NAME, Channel.UNLIMITED) {
                     |  for (msg in channel) {
                     |    when (msg) {
                     |""".trimMargin()
@@ -129,9 +128,22 @@ class KActorAnnotationProcessor : AbstractProcessor() {
 
         val actorInitializer = actorInitializerFragments.joinToString("")
         val actorClassName = ParameterizedTypeName.get(ClassName("kotlinx.coroutines.experimental.channels", "ActorJob"), messageBaseClassName)
+        val contextTypeClassName = ClassName("kotlin.coroutines.experimental", "CoroutineContext")
+        val contextParamSpec = ParameterSpec
+                .builder(CONTEXT_VAR_NAME, contextTypeClassName)
+                .build()
+        return FunSpec.builder(ACTORFACTORY_FUNC_NAME)
+                .addModifiers(KModifier.PRIVATE)
+                .addParameter(contextParamSpec)
+                .returns(actorClassName)
+                .addCode(actorInitializer)
+                .build()
+    }
+
+    private fun actorPropertySpec(messageBaseClassName: ClassName): PropertySpec {
+        val actorClassName = ParameterizedTypeName.get(ClassName("kotlinx.coroutines.experimental.channels", "ActorJob"), messageBaseClassName)
         return PropertySpec
                 .builder(ACTOR_PROP_NAME, actorClassName, KModifier.PRIVATE)
-                .initializer(actorInitializer)
                 .build()
     }
 
@@ -154,7 +166,7 @@ class KActorAnnotationProcessor : AbstractProcessor() {
             |""".trimMargin()
     }
 
-    private fun delegteMethodSpecs(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName) = visibleMethodElements.map { method ->
+    private fun delegateMethodSpecs(visibleMethodElements: List<ExecutableElement>, messageBaseClassName: ClassName) = visibleMethodElements.map { method ->
         val delegateMethodName = method.simpleName.toString()
         val parameterSpecs = method.parameters
                 .map { parameter ->
@@ -162,8 +174,7 @@ class KActorAnnotationProcessor : AbstractProcessor() {
                     ParameterSpec.builder(parameterSimpleName, parameter.asType().asTypeName())
                             .build()
                 }
-        val messageParameterList = method.parameters
-                .map { parameter -> parameter.simpleName }.joinToString()
+        val messageParameterList = method.parameters.joinToString { parameter -> parameter.simpleName }
         val messageName = messageBaseClassName.simpleName() + "." + delegateMethodName.capitalize()
         FunSpec.builder(method.simpleName.toString())
                 .addModifiers(KModifier.OVERRIDE)
@@ -209,4 +220,3 @@ class KActorAnnotationProcessor : AbstractProcessor() {
         parameter.toPropertySpecList()
     }
 }
-

@@ -1,48 +1,41 @@
 package de.musoft.annotationProcessor.test
 
-import kotlinx.coroutines.experimental.CompletableDeferred
-import kotlinx.coroutines.experimental.Unconfined
-import kotlinx.coroutines.experimental.launch
-import kotlinx.coroutines.experimental.runBlocking
+import kotlinx.coroutines.experimental.*
 import kotlin.system.measureTimeMillis
 
-private val concurrent = 80
-private val operations = 100000
+private val concurrent = 6
+private val operations = 1000
 
 fun main(args: Array<String>) {
-    val dispatcher = Unconfined
-    val actor = CounterActor(java.lang.String(""), dispatcher)
-    runBlocking(dispatcher) {
+    val launcherDispatcher = newFixedThreadPoolContext(concurrent, "Launcher Context")
+    val actorDispatcher = Unconfined
+    //val actorDispatcher = CommonPool
+    val actor = CounterActor(Integer(0), actorDispatcher)
+    runBlocking(Unconfined) {
         val time = measureTimeMillis {
-            println("Launching jobs")
+            val start = System.currentTimeMillis()
+            println("${System.currentTimeMillis() - start}: Launching jobs")
             val jobs = List(size = concurrent) { i ->
-                println("$i")
-                launch(dispatcher) {
-                    repeat(operations) {
-                        waitFor { result ->
-                            actor.inc(result)
-                        }
+                launch(launcherDispatcher) {
+                    val results = List(operations) { j ->
+                        val result = CompletableDeferred<Unit>()
+                        actor.inc(result)
+                        result
                     }
+                    results.forEach { it.await() }
                 }
             }
-            println("Waiting for all jobs to be done")
-            var i = concurrent
+            println("${System.currentTimeMillis() - start}: Waiting for all jobs to be done")
+            var i = 0
             jobs.forEach {
                 it.join()
-                println("${--i}")
             }
-            println("Done")
+            println("${System.currentTimeMillis() - start}: All jobs done")
             val result = CompletableDeferred<Integer>()
             actor.getI(result)
-            println("Final value: ${result.await()}")
+            println("${System.currentTimeMillis() - start}: Final value: ${result.await()}")
         }
         println("Took $time ms")
     }
-}
-
-private suspend inline fun <reified T> waitFor(block: (CompletableDeferred<T>) -> T): T {
-    val result = CompletableDeferred<T>()
-    block(result)
-    return result.await()
 }
 

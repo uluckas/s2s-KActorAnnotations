@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module external.linked.project.id=":KActorAnnotationProcessor" external.linked.project.path="$MODULE_DIR$/../../../KActorAnnotationProcessor" external.root.project.path="$MODULE_DIR$/../../.." external.system.id="GRADLE" external.system.module.group="de.musoft" external.system.module.version="1.0-SNAPSHOT" type="JAVA_MODULE" version="4">
   <component name="FacetManager">
+    <facet type="java-gradle" name="Java-Gradle">
+      <configuration>
+        <option name="BUILD_FOLDER_PATH" value="$MODULE_DIR$/../../../KActorAnnotationProcessor/build" />
+        <option name="BUILDABLE" value="true" />
+      </configuration>
+    </facet>
     <facet type="kotlin-language" name="Kotlin">
       <configuration version="3" platform="JVM 1.8" useProjectSettings="false">
         <compilerSettings />
@@ -23,27 +29,25 @@
         </compilerArguments>
       </configuration>
     </facet>
-    <facet type="java-gradle" name="Java-Gradle">
+    <facet type="android-gradle" name="Android-Gradle">
       <configuration>
-        <option name="BUILD_FOLDER_PATH" value="$MODULE_DIR$/../../../KActorAnnotationProcessor/build" />
-        <option name="BUILDABLE" value="true" />
+        <option name="GRADLE_PROJECT_PATH" value=":KActorAnnotationProcessor" />
       </configuration>
     </facet>
   </component>
   <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_1_8">
-    <output url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/out/production/classes" />
-    <output-test url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/out/test/classes" />
+    <output url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/build/classes/java/main" />
+    <output-test url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/build/classes/java/test" />
     <exclude-output />
     <content url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor">
       <sourceFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/src/main/java" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/src/main/kotlin" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/src/main/resources" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/src/test/java" isTestSource="true" />
       <sourceFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/src/test/kotlin" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/src/main/resources" type="java-resource" />
       <sourceFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/src/test/resources" type="java-test-resource" />
       <excludeFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/.gradle" />
       <excludeFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/build" />
-      <excludeFolder url="file://$MODULE_DIR$/../../../KActorAnnotationProcessor/out" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
@@ -65,5 +69,19 @@
     <orderEntry type="library" scope="TEST" name="Gradle: org.jetbrains.kotlin:kotlin-stdlib-jre7:1.2.0-beta-88" level="project" />
     <orderEntry type="library" scope="TEST" name="Gradle: org.jetbrains.kotlin:kotlin-stdlib:1.2.0-beta-88" level="project" />
     <orderEntry type="library" scope="TEST" name="Gradle: org.jetbrains:annotations:13.0" level="project" />
+    <orderEntry type="library" exported="" scope="PROVIDED" name="kotlin-stdlib-jre8-1.2.0-beta-88" level="project" />
+    <orderEntry type="library" exported="" scope="PROVIDED" name="kotlinpoet-0.5.0" level="project" />
+    <orderEntry type="library" exported="" scope="PROVIDED" name="kotlin-reflect-1.2.0-beta-88" level="project" />
+    <orderEntry type="library" exported="" scope="PROVIDED" name="kotlin-stdlib-jre7-1.2.0-beta-88" level="project" />
+    <orderEntry type="library" exported="" scope="PROVIDED" name="kotlin-stdlib-1.2.0-beta-88" level="project" />
+    <orderEntry type="library" exported="" scope="PROVIDED" name="annotations-13.0" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
+    <orderEntry type="library" exported="" name="KActorAnnotationProcessor.KActorAnnotationProcessor-1.0-SNAPSHOT" level="project" />
   </component>
 </module>
